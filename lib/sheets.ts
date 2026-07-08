@@ -95,7 +95,9 @@ async function getRowsPublic(sheetId: string, tab: string): Promise<string[][]> 
     const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encoded}`
     const res = await fetch(url, { next: { revalidate: 0 } })
     if (!res.ok) return []
-    const text = await res.text()
+    // Force UTF-8 decoding
+    const buffer = await res.arrayBuffer()
+    const text = new TextDecoder('utf-8').decode(buffer)
     return text.trim().split('\n').map(line => {
       const cells: string[] = []
       let cur = '', inQ = false
@@ -137,34 +139,10 @@ const HEADER_MAP: Record<string, string> = {
   'time':          'time',
   'รูปภาพ':        'image_url',
   'image_url':     'image_url',
-  'หมายเหตุ':      'note',
-  'note':          'note',
   'school_code':   'school_code',
   'รหัสโรงเรียน': 'school_code',
   'academic_year': 'academic_year',
   'ปีการศึกษา':   'academic_year',
-}
-
-// เดา field จาก header เมื่อไม่ตรงกับ HEADER_MAP เป๊ะๆ (เผื่อสะกด/คำที่ต่างไปเล็กน้อยในแต่ละชีท)
-function guessHeaderKey(h: string): string {
-  if (!h) return ''
-  if (HEADER_MAP[h]) return HEADER_MAP[h]
-
-  const lower = h.toLowerCase()
-  if (h.includes('รหัสนักเรียน') || h.includes('รหัสประจำตัว') || lower.includes('student_id') || lower === 'id') return 'student_id'
-  if (h.includes('คำนำหน้า') || lower.includes('prefix') || lower.includes('title')) return 'prefix'
-  if (h.includes('นามสกุล') || lower.includes('lname') || lower.includes('surname')) return 'lname'
-  if (h.includes('ชื่อจริง') || lower.includes('fname') || lower === 'first name') return 'fname'
-  if (h.includes('ชั้น') || h.includes('ระดับ') || lower.includes('grade')) return 'grade'
-  if (h.includes('ห้อง') || lower.includes('classroom') || lower.includes('room')) return 'classroom'
-  if (h.includes('เลขที่') || lower.includes('number')) return 'number'
-  if (h.includes('สถานะ') || lower.includes('status')) return 'status'
-  if (h.includes('เวลา') || lower.includes('time')) return 'time'
-  if (h.includes('รูปภาพ') || lower.includes('image')) return 'image_url'
-  if (h.includes('หมายเหตุ') || lower.includes('note')) return 'note'
-  if (h.includes('ปีการศึกษา') || lower.includes('academic_year')) return 'academic_year'
-  if (h.includes('รหัสโรงเรียน') || lower.includes('school_code')) return 'school_code'
-  return h // เดาไม่ได้ — เก็บ header เดิมไว้
 }
 
 function toObjects<T>(rows: string[][]): T[] {
@@ -174,7 +152,7 @@ function toObjects<T>(rows: string[][]): T[] {
     if (rows[i].some(v => v && !v.startsWith('⚠️') && !v.includes('FREE'))) { hi = i; break }
   }
   const rawHeaders = rows[hi]
-  const headers    = rawHeaders.map(h => guessHeaderKey(h?.trim() || ''))
+  const headers    = rawHeaders.map(h => HEADER_MAP[h?.trim()] || h?.trim() || '')
   return rows.slice(hi + 1)
     .filter(r => r.some(v => v?.trim()))
     .map(r => {
@@ -205,22 +183,18 @@ export async function getCheckinRange(
     .map(normalizeRecord)
 }
 
-// จัดการกรณี grade/classroom รวมกันในเซลล์เดียว ("ม.3/2") หรือแยกคอลัมน์กัน
-export function splitGradeClassroom(gradeRaw: string, classroomRaw: string): { grade: string; classroom: string } {
-  let grade     = gradeRaw     || ''
-  let classroom = classroomRaw || ''
+// normalize record — จัดการกรณี grade/classroom รวมกันหรือแยกกัน
+function normalizeRecord(r: any): CheckinRecord {
+  // grade อาจเป็น "ม.3" และ classroom แยกอีก column
+  // หรือ grade เป็น "ม.3/2" รวมกัน
+  let grade     = r.grade     || ''
+  let classroom = r.classroom || ''
 
   if (grade.includes('/') && !classroom) {
     const parts = grade.split('/')
     grade       = parts[0].trim()
     classroom   = parts[1].trim()
   }
-
-  return { grade, classroom }
-}
-
-function normalizeRecord(r: any): CheckinRecord {
-  const { grade, classroom } = splitGradeClassroom(r.grade || '', r.classroom || '')
 
   // image_url อาจอยู่ใน key ต่างๆ
   const image_url = r.image_url || r['รูปภาพ'] || ''
@@ -237,7 +211,6 @@ function normalizeRecord(r: any): CheckinRecord {
     status:     r.status     || r['สถานะ'] || '',
     time:       r.time       || r['เวลา'] || '',
     image_url,
-    note:       r.note       || r['หมายเหตุ'] || '',
   }
 }
 
@@ -247,8 +220,7 @@ export function getTodayThai(): string {
 }
 
 export async function getAllStudents(token: string, sheetId: string) {
-  const raw = toObjects<Student>(await getRows(token, sheetId, 'Students'))
-  return raw.map(s => ({ ...s, ...splitGradeClassroom(s.grade, s.classroom) }))
+  return toObjects<Student>(await getRows(token, sheetId, 'Students'))
 }
 
 export async function getStudentById(token: string, sheetId: string, id: string) {
