@@ -80,7 +80,7 @@ export async function verifyUser(
     const userSheetId  = extractSheetId(userSheetUrl) || masterId
 
     // grade/classroom อาจถูกกรอกรวมกันในเซลล์เดียว ("ม.3/2") — ต้องแยกให้ตรงกับที่ getAllStudents() ทำ
-    const { grade, classroom } = splitGradeClassroom(row[iGrade] || '', row[iClass] || '')
+    const rawGrade = row[iGrade] || ''; const rawClass = row[iClass] || ''; const grade = rawGrade; const classroom = rawClass;
 
     return {
       id:        row[iUser],
@@ -110,3 +110,4 @@ export async function getAllUsers(sheetId: string): Promise<any[]> {
       return o
     })
 }
+
