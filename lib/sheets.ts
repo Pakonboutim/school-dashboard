@@ -1,4 +1,4 @@
-﻿import { google } from 'googleapis'
+import { google } from 'googleapis'
 
 export interface CheckinRecord {
   timestamp: string
@@ -72,15 +72,32 @@ export async function listSchoolSheets(accessToken: string) {
 }
 
 async function getRows(accessToken: string, sheetId: string, tab: string): Promise<string[][]> {
-  // ถ้าไม่มี token ใช้ public CSV แทน
+  // ถ้าไม่มี token ลอง Service Account ก่อน แล้วค่อย fallback public CSV
   if (!accessToken || accessToken === 'public') {
-    return getRowsPublic(sheetId, tab)
+    try {
+      const auth = new google.auth.GoogleAuth({
+        credentials: {
+          client_email: process.env.GOOGLE_SERVICE_EMAIL,
+          private_key:  process.env.GOOGLE_SERVICE_KEY?.replace(/\\n/g, '\n'),
+        },
+        scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+      })
+      const sheets = google.sheets({ version: 'v4', auth: await auth.getClient() as any })
+      const res    = await sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range: `${tab}!A:Z`,
+      })
+      return (res.data.values || []) as string[][]
+    } catch (e) {
+      console.error(`[sheets] SA failed for ${tab}, trying public:`, e)
+      return getRowsPublic(sheetId, tab)
+    }
   }
   try {
     const sheets = google.sheets({ version: 'v4', auth: getAuth(accessToken) })
     const res    = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: `${tab}!A:M`,
+      range: `${tab}!A:Z`,
     })
     return (res.data.values || []) as string[][]
   } catch (e) {
@@ -371,4 +388,3 @@ export function countSchoolDays(start: string, end: string, holidays: Set<string
   }
   return days
 }
-
