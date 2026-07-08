@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/behavior/sync?secret=bhp-cron-2026",
+      "schedule": "30 9 * * 1-5"
+    }
+  ]
+}

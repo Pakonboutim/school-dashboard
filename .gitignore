@@ -1,0 +1,8 @@
+.vercel
+.env*.local
+
+node_modules/
+
+bhpcheckin-97ebbe6d2826.json
+
+.next/
