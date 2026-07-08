@@ -1,4 +1,4 @@
-import { google } from 'googleapis'
+﻿import { google } from 'googleapis'
 
 export interface CheckinRecord {
   timestamp: string
@@ -371,3 +371,4 @@ export function countSchoolDays(start: string, end: string, holidays: Set<string
   }
   return days
 }
+
